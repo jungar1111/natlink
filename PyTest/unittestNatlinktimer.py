@@ -11,21 +11,15 @@
 
 import sys
 import unittest
-import types
-import os
-import os.path
 import time
 import traceback        # for printing exceptions
-from struct import pack
+
+from pathqh import path
 
 import natlink
-import gramparser
-from natlinkutils import *
-import natlinkutils
-import win32gui
-# from Natlinktimer import *
-import utilsqh
-from pathqh import path
+from natlinkutils import GrammarBase
+import natlinktimer
+
 class TestError(Exception):
     pass
 ExitQuietly = 'ExitQuietly'
@@ -34,7 +28,7 @@ ExitQuietly = 'ExitQuietly'
 # try some experiments more times, because gotBegin sometimes seems
 # not to hit
 nTries = 10
-natconnectOption = 0 # or 1 for threading, 0 for not. Seems to make difference
+natconnectOption = 1 # or 1 for threading, 0 for not. Seems to make difference
                      # with spurious error (if set to 1), missing gotBegin and all that...
 def getBaseFolder(globalsDict=None):
     """get the folder of the calling module.
@@ -46,7 +40,7 @@ def getBaseFolder(globalsDict=None):
 
 thisDir = getBaseFolder(globals())
 
-logFileName = os.path.join(thisDir, "Natlinktimertestresult.txt")
+logFileName = path(thisDir)/"Natlinktimertestresult.txt"
 
 # make different versions testing possible:
 import natlinkstatus
@@ -64,14 +58,13 @@ class UnittestNatlinktimer(unittest.TestCase):
         self.setMicState = "off"
         #self.lookForDragonPad()
 
-
-
     def tearDown(self):
         try:
             # give message:
             self.setMicState = "off"
             # kill things
         finally:
+            natlinktimer.stopTimerCallback()
             self.disconnect()
 
         
@@ -120,425 +113,112 @@ class UnittestNatlinktimer(unittest.TestCase):
         self.assertEqual(expected, actual, 'Function call "%s" returned unexpected result\nExpected: %s, got: %s'%
                           (command, expected, actual))
 
-    def doTestFormatting(self, state, input, output):
-        """do the testing, with input state, input and expected output
-        
-        this is the test from Joel, from the Natlinktimer.py module
-        
-        NOTE: returns the output state!!!
-        """
-        words = input.split()
-        inputState = copy.copy(state)
-        for i in range(len(words)):
-            words[i] = words[i].replace('_', ' ')
-        actual,state = formatWords(words,state)
-        self.assertEqual(output, actual, "output not as expected: expected: |%s|, actual output: |%s|\n\t\t(input: %s, state in: %s, state out: %s)"%
-                                (output, actual, words, inputState, state))
-        return state
+    def testSingleTimer(self):
+        testName = "testSingleTimer"
+        self.log(testName)
 
-    def doTestFormatLetters(self, input, output):
-        """do the testing, with no inputState (this is fixed for this function)
-        
-        """
-        words = input.split()
-        for i in range(len(words)):
-            words[i] = words[i].replace('_', ' ')
-        actual = formatLetters(words)
-        self.assertEqual(output, actual, "output of formatLetters not as expected: expected: |%s|, actual output: |%s|\n\t\t(input: %s)"%
-                                (output, actual, words))
+        # Create a simple command grammar.
+        # This grammar then sets the timer, and after 3 times expires
 
-    #---------------------------------------------------------------------------
-    def testFormatWord(self):
-        """all words with normal (0) state as input.
-        
-        .\point results in ' .'
-        """
-        self.log('testFormatWord')
+        class TestGrammar(GrammarBase):
 
-        words =             ['.', r'.\period\period', r'.\dot\dot', r',\comma\comma', r':\colon\colon', r'-\hyphen\hyphen', 'normal']
-        formattedExpected = [' .', '.',        '.',       ',',        ':',        '-', ' normal']
-        stateExpected =      [(), (9, 4),      (8, 10),    (),       (),           (8,), ()]
-        for word, expectedWord, expectedState in zip(words,  formattedExpected, stateExpected):
-            ## all starting with stateFlags 0, normal formatting behaviour:
-            formattedResult, newState = formatWord(word, wordInfo=None, stateFlags=set())
-            print('stateFlages after formatting of %s: %s (%s)'% (word, repr(newState), repr(showStateFlags(newState))))
-            self.assertTrue(formattedResult == expectedWord,
-                         "word |%s| not formatted as expected\nActual: |%s|, expected: |%s|"%
-                         (word, formattedResult, expectedWord))
-            expSet = set(expectedState)
-            self.assertTrue(expSet == newState, "state after %s (%s) not as expected\nActual: %s, Expected: %s"%
-                         (word, formattedResult, repr(newState), repr(expSet)))
+            def __init__(self):
+                GrammarBase.__init__(self)
+                self.resetExperiment()
 
-    def testFormatLetters(self):
-        """all words with normal (0) state as input.
-        
-        .\point results in ' .'
-        """
-        self.log('testFormatLetters')
+            def resetExperiment(self):
+                self.Hit = 0
+                self.MaxHit = 5
+                self.sleepTime = 0 # to be specified by calling instance, the sleeping time after each hit
+                self.results = []
 
-        testFunc = self.doTestFormatLetters
-        words =   r'x\spelling-letter\X_ray y\spelling-letter\Yankee !\spelling-exclamation-mark\exclamation_mark'
-        state=testFunc(words, 'xy!')
-        pass
-       
-    def testFlagsLike(self):
-        """tests the different predefined flags in Natlinktimer"""
-        self.log('testFlagsLike')
-        
-        gwi = getWordInfo11
-        wfList = [(r'.\period\period', 'period'),
-                (r',\comma\comma', 'comma'),
-                (r'-\hyphen\hyphen', 'hyphen'),
-                #( (10,), 'number'),  ## testing number later
-                  ]
-            
-        for w,t in wfList:
-            varInNatlinktimer = 'flags_like_%s'% t
-            if type(w) == tuple:
-                flags = w
-            else:
-                wInfo = gwi(w)
-                self.assertTrue(wInfo != None, "word info for word: %s could not be found. US user???"% w)
-                flags = wordInfoToFlags(wInfo)
-                flags.discard(3)
-                flags = tuple(flags) # no delete flag not interesting
-            fromNatlinktimer = globals()[varInNatlinktimer]
-            self.assertTrue(fromNatlinktimer == flags, "flags_like variable |%s| not as expected\nIn Natlinktimer.py: %s (%s)\nFrom actual word infoExpected: %s (%s)"%
-                         (varInNatlinktimer, fromNatlinktimer, showStateFlags(fromNatlinktimer), flags, showStateFlags(flags)))
-            
-    def testInitializeStateFlags(self):
-        """test helper functions of Natlinktimer"""
-        self.log('testInitializeStateFlags')
-        
-        result = initializeStateFlags()
-        expected = set()
-        self.assertTrue(expected == result, "initialised state flags not as expected\nActual: %s, Expected: %s"%
-                     (result, expected))
+            def report(self):
+                """print the results lines
+                """
+                for line in self.results:
+                    print(line)
 
-        result = initializeStateFlags(flag_cond_no_space)
-        expected = set([10])
-        self.assertTrue(expected == result, "initialised state flags not as expected\nActual: %s, Expected: %s"%
-                     (result, expected))
-        
-        result = initializeStateFlags(flag_cond_no_space, flag_no_formatting)
-        expected =set([10, 18])
-        self.assertTrue(expected == result, "initialised state flags not as expected\nActual: %s, Expected: %s"%
-                     (result, expected))
-        readable = showStateFlags(result)
-        expectedReadable = ('flag_cond_no_space', 'flag_no_formatting')
-        self.assertTrue(expectedReadable == readable, "initialised state flags readable were not as expected\nActual: %s, Expected: %s"%
-                     (readable, expectedReadable))
-        
-            
-            
-    def testFormatNumbers(self):
-        """words with input of previous word, influencing numbers, to be kept together
-        
-        needs testing again, oct 2010 QH
-        
-        """
-        self.log('testFormatNumbers')
-        
+            def doTimer(self):
+                self.results.append(f'doTimer {self.Hit}')
+                self.Hit +=1
+                log(f"hit {self.Hit}")
+                time.sleep(self.sleepTime/1000)  # sleep 10 milliseconds
+                if self.Hit == self.MaxHit:
+                    expectElapsed = self.Hit * self.interval
+                    print(f"expect duration of this timer: {expectElapsed}")
+                    natlinktimer.removeTimerCallback(self.doTimer)
+                ## try to shorten interval:
+                currentInterval = self.grammarTimer.interval
+                if currentInterval > 150:
+                    newInterval = currentInterval - 10
+                    return newInterval
 
-        words =             [r'3\three', r'.\point', r'5\five', r'by', r'4\four', 'centimeter',
-                             r',\comma', 'proceeding']
-
-        formattedExpected = [' 3', '.',        '5', ' by', ' 4', ' centimeter', ',', ' proceeding']
-        wordInfos = [(flag_cond_no_space,), None, (flag_cond_no_space,), None, (flag_cond_no_space,), None, None, None]
-        stateExpected = [(10,), (8, 10), (10,), (), (10,), (), (), (), ()]
-        newState = 0
-        totalResult = []
-        for word, info, expectedWord, expectedState in zip(words,  wordInfos, formattedExpected, stateExpected):
-            ## all starting with stateFlags 0, normal formatting behaviour:
-            formattedResult, newState = formatWord(word, wordInfo=info, stateFlags=newState)
-            totalResult.append(formattedResult)
-            print('showStateFlages of %s: %s'% (word, repr(showStateFlags(newState))))
-            self.assertTrue(formattedResult == expectedWord,
-                         "word |%s| not formatted as expected\nActual: |%s|, expected: |%s|"%
-                         (word, formattedResult, expectedWord))
-            expectedState = set(expectedState)  # changes QH oct 2011
-            self.assertTrue(expectedState == newState, "state of %s (%s) not as expected\nActual: %s, expected: %s"%
-                         (word, formattedResult, repr(newState), repr(expectedState)))
-            pass
-        expected = " 3.5 by 4 centimeter, proceeding"
-        actual = ''.join(totalResult)
-        self.assertTrue(expected == actual, "total result of first test not as expected\nActual: |%s|, expected: |%s|"%
-                         (actual, expected))
-
-
-
-
-        # point without flag_cond_no_space around:
-        words =             [r'the', r'.\point', r'is', r'.\period']
-        formattedExpected = ['The', ' .',        'is', '.']
-        stateExpected =     [(),   (8, 10),      (),  (9, 4)]
-        newState = None  # start of buffer
-        totalResult = []
-        for word, expectedWord, expectedState in zip(words, formattedExpected, stateExpected):
-            ## all starting with stateFlags 0, normal formatting behaviour:
-            formattedResult, newState = formatWord(word, wordInfo=None, stateFlags=newState)
-            totalResult.append(formattedResult)
-            print('showStateFlages of %s: %s'% (word, repr(showStateFlags(newState))))
-            self.assertTrue(formattedResult == expectedWord,
-                         "word |%s| not formatted as expected\nActual: |%s|, expected: |%s|"%
-                         (word, formattedResult, expectedWord))
-            self.assertTrue(expectedState == newState, "state of %s (%s) not as expected\nActual: |%s|, expected: |%s|"%
-                         (word, formattedResult, repr(newState), repr(expectedState)))
-
-        expected = "The .is."
-        actual = ''.join(totalResult)
-        self.assertTrue(expected == actual, "total result of second test not as expected\nActual: |%s|, expected: |%s|"%
-                         (actual, expected))
-
-
-        # words, numbers, words
-        words =             [r'the', r'test', r'is', r'3\three', r'.\point', r'4\four', 'by', r'5\five', 'centimeter']
-        wordInfos = [None, None, None, (flag_cond_no_space,), None, (flag_cond_no_space,), None, (flag_cond_no_space,), None, None, None]
-        formattedExpected = ['The', ' test', ' is', ' 3', '.', '4', ' by', ' 5', ' centimeter']
-        stateExpected =     [(),      (),      (),  (10,), (8, 10), (10,), (), (10,), ()]
-        newState = None  # start of buffer
-        totalResult = []
-        for word, wordInfo, expectedWord, expectedState in zip(words, wordInfos, formattedExpected, stateExpected):
-            ## all starting with stateFlags 0, normal formatting behaviour:
-            formattedResult, newState = formatWord(word, wordInfo=wordInfo, stateFlags=newState)
-            totalResult.append(formattedResult)
-            print('showStateFlages of %s: %s'% (word, repr(showStateFlags(newState))))
-            self.assertTrue(formattedResult == expectedWord,
-                         "word |%s| not formatted as expected\nActual: |%s|, expected: |%s|"%
-                         (word, formattedResult, expectedWord))
-            self.assertTrue(expectedState == newState, "state of %s (%s) not as expected\nActual: |%s|, expected: |%s|"%
-                         (word, formattedResult, repr(newState), repr(expectedState)))
-
-        expected = "The test is 3.4 by 5 centimeter"
-        actual = ''.join(totalResult)
-        self.assertTrue(expected == actual, "total result of third test not as expected\nActual: |%s|, expected: |%s|"%
-                         (actual, expected))
-
-    def testSpacebar(self):
-        """spacebar with dicate is handled ok, spacebar alone should produce a single space
-        """
-        self.log('testSpacebar')
-
-        testSubroutine = self.doTestFormatting
-        
-        state = -1
-        state=testSubroutine(state,
-            r'\space-bar\space-bar',
-            ' ')
-
-        state = -1
-        state=testSubroutine(state,
-            r'\space-bar\space-bar hello',
-            ' hello')
-        state = -1
-        state=testSubroutine(state,
-            r'hello \space-bar\space-bar',
-            'hello ')
-        state = -1
-        state=testSubroutine(state,
-            r'space hello space',
-            '  hello ')
-    
-            
-    def testStartConditioNatlinktimerWords(self):
-        """testing the initial states that can be passed
-        
-        a set of numbers, or
-        
-        None:  ([flag_no_space_next, flag_active_cap_next])  ([8, 5])
-        0: empty set (continue with a space in front)
-        -1: special, no capping, but no space in front: set(flag_no_space_next) or ([8])
-        """
-        self.log('testStartConditioNatlinktimerWords')
-
-        testFunc = self.doTestFormatting
-        
-        testFunc(None, 'hello', 'Hello')
-        testFunc(0, 'this', ' this')
-        testFunc(-1, 'is', 'is')
-        testFunc(set(), 'good', ' good')
-      
-        testFunc(set([8, 5]),  'testing', 'Testing')
-        testFunc(set([8]), 'with', 'with')
-
-        # uppercase all (12)
-        testFunc(set([8, 12]),  'testing more words', 'TESTING MORE WORDS')
-
-        # capitalize all (11)
-        testFunc(set([8, 11]),  'capitalize words in a title', 'Capitalize Words In A Title')
-
-        # lowercase all (13) and no-spacing all (14)
-        
-        testFunc(set([13, 14]),  'Dakar @\\at-sign\\at_sign world .com\\dot_com', 'dakar@world.com')
-
-        
-        # and special, go to lowercase
-        testFunc(set([7, 8]), 'Dakar', 'dakar')  # lowercase next...
-
-    def testFormatting11(self):
-        """these are a lot of tests for Dragon 11 (and possibly beyond)
-        
-        study the words tested below!
-        """
-        self.log('testFormatting11')
-
-        testSubroutine = self.doTestFormatting
-    
-        state=None
-        # assume english, two spaces after .:
-        # note _ is converted into a space, inside a word ()
-
-        # custom word added (*\\modulo)    
-        state=testSubroutine(state,
-            r'hello *\\modulo world',
-            'Hello * world')
-        
-        state=None
-        state=testSubroutine(state,
-            r'first .\period\period next',
-            'First.  Next')
-        # continuing the previous:
-        state=testSubroutine(state,
-            r'this is a second sentence .\period\period',
-            ' this is a second sentence.')
-        state=testSubroutine(state,
-            r'and a third sentence .\period\period',
-            '  And a third sentence.')
-        state=testSubroutine(state,
-            r'\caps-on\Caps-On as you can see ,\comma\comma this yours_truly works \caps-off\caps_off well',
-            '  As You Can See, This Yours Truly Works well')
-    
-        state=testSubroutine(state,
-            r'an "\left-double-quote\open-quote example of testing .\period\period "\right-double-quote\close_quote hello',
-            ' an "example of testing."  Hello')
-        state=testSubroutine
-
-        state = None
-        state=testSubroutine(state,
-            r'a hello .\dot\dot test message .\period\period and proceed with more .\dot\dot testing .\period\period',
-            'A hello.test message.  And proceed with more.testing.')
-        state=testSubroutine
-    
-        # special signs:
-        state = None
-        state=testSubroutine(state,
-            r'an example with many signs :\colon\colon ;\semicolon\semicolon and @\at-sign\at_sign and [\left-square-bracket\left_bracket',
-            r'An example with many signs:; and@and [')
-            
-        state = None
-        state=testSubroutine(state,
-            r'and continuing with ]\right-square-bracket\right_bracket and -\hyphen\hyphen and -\minus-sign\minus_sign .\period\period',
-            'And continuing with] and-and -.')
-        state=testSubroutine
-    
-        # capping and spacing:
-        state = None
-        # after the colon is incorrect (at least different actual dictate result)!
-        state=testSubroutine(state,
-            r'hello \no-space\no_space there and no spacing :\colon\colon \no-space-on\no_space_on Daisy Dakar and more \no-space-off\no_space_off and normal Daila_Lama again .\period\period',
-            'Hellothere and no spacing:DaisyDakarandmore and normal Daila Lama again.')
-        state=testSubroutine
-    
-        state = None
-        state=testSubroutine(state,
-            r'\no-caps\no_caps Daisy Dakar lowercase example \no-caps-on\no_caps_on Daisy DAL Daila_Lama and Dakar \no-caps-off\no_caps_off and Dakar and Dalai_Lama again .\period\period',
-            'daisy Dakar lowercase example daisy dal daila lama and dakar and Dakar and Dalai Lama again.')
-        state=testSubroutine
-    
-        state = None
-        # note the capping of title words, can not be prevented here...!!
-        state=testSubroutine(state,
-            r'\cap\Cap uppercase example and normal and \caps-on\caps_on and continuing with an uppercase example and \caps-off\caps_off ,\comma\comma normal again .\period\period',
-            'Uppercase example and normal and And Continuing With An Uppercase Example And, normal again.')
-        state=testSubroutine
-    
-        state = None
-        state=testSubroutine(state,
-            r'\all-caps\all_caps examples and normal and \all-caps-on\all_caps_on and continuing with \all-caps-off\all_caps_off ,\comma\comma normal again .\period\period',
-            'EXAMPLES and normal and AND CONTINUING WITH, normal again.')
-        state=testSubroutine
-    
-        state = None
-        state=testSubroutine(state,
-            r'combined \all-caps-on\all_caps_on hello \no-space\no_space there and \no-space-on\no_space_on back again and \all-caps-off\all_caps_off continuing no spacing \no-space-off\no_space_off now normal again .\period\period',
-            'Combined HELLOTHERE ANDBACKAGAINANDcontinuingnospacing now normal again.')
-    
-        # propagating the properties:
-        state = None
-        state=testSubroutine(state,
-            r'\all-caps-on\all_caps_on this is a test',
-            'THIS IS A TEST')
-        state=testSubroutine(state,
-            r'continuing in the next phrase \no-space-on\no_space_on with no \all-caps-off\all_caps_off spacing',
-            ' CONTINUING IN THE NEXT PHRASEWITHNOspacing')
-        state=testSubroutine(state,
-            r'and resuming like that .\period\period this  \no-space-off\no_space_off is now at last normal .\period\period',
-            'andresuminglikethat.This is now at last normal.')
-    
-        # new line, new paragraph:
-        state = None
-        state=testSubroutine(state,
-            r'Now for the \new-line\new_line and for the \new-paragraph\new_paragraph testing .\period\period',
-            'Now for the\r\nand for the\r\n\r\nTesting.')
-
+        testGram = TestGrammar()
+        testGram.interval = 200
+        testGram.sleepTime = 30  # all milliseconds now
+        testGram.grammarTimer = natlinktimer.setTimerCallback(testGram.doTimer, interval=testGram.interval, debug=1)
+        for i in range(5):
+            if testGram.Hit >= testGram.MaxHit :
+                printInfo = str(testGram.grammarTimer)
+                self.log(f"timer seems to be ready. results: {printInfo}")
+                break
+            wait(1000)
+        else:
+            self.log(f"waiting time expired, results got: {testGram.results}")
+        testGram.report()
+        self.log("End of %s"% testName)
    
-def log(t):
-    """log to print and file if present
-
-    note print depends on the state of natlink: where is goes or disappears...
-    I have no complete insight is this, but checking the logfile afterwards
-    always works (QH)
+def wait(tmilli=100):
+    """wait milliseconds via waitForSpeech loop of natlink
+    
+    default 100 milliseconds, or 0.1 second
+    """
+    tmilli = int(tmilli)
+    natlink.waitForSpeech(tmilli)
+   
+def log(t, refresh=None):
+    """logging is a mess, just print here...
     """
     print(t)
-    if logFile:
-        logFile.write(t + '\n')
+    # openOption = 'a' if not refresh else 'w'
+    # with open(logFileName, openOption) as lf:
+    #     lf.write(t + '\n')
     
 #---------------------------------------------------------------------------
 # run
 #
-# This is the main entry point.  It will connect to NatSpeak and perform
-# a series of tests.  In the case of an error, it will cleanly disconnect
-# from NatSpeak and print the exception information,
-def dumpResult(testResult, logFile):
-    """dump into 
-    """
-    if testResult.wasSuccessful():
-        mes = "all succesful"
-        logFile.write(mes)
-        return
-    logFile.write('\n--------------- errors -----------------\n')
-    for case, tb in testResult.errors:
-        logFile.write('\n---------- %s --------\n'% case)
-        logFile.write(tb)
-        
-    logFile.write('\n--------------- failures -----------------\n')
-    for case, tb in testResult.failures:
-        logFile.write('\n---------- %s --------\n'% case)
-        logFile.write(tb)
+# # This is the main entry point.  It will connect to NatSpeak and perform
+# # a series of tests.  In the case of an error, it will cleanly disconnect
+# # from NatSpeak and print the End of testSingleTimer
+# def dumpResult(testResult, logFileName):
+#     """dump into the logFile
+#     """
+#     with open(logFileName, 'a') as logFile:
+#         if testResult.wasSuccessful():
+#             mes = "all succesEnd of testSingleTimerful"
+#             logFile.write(mes)
+#             return
+#         logFile.write('\n--------------- errors -----------------\n')
+#         for case, tb in testResult.errors:
+#             logFile.write('\n---------- %s --------\n'% case)
+#             logFile.write(tb)
+#             
+#         logFile.write('\n--------------- failures -----------------\n')
+#         for case, tb in testResult.failures:
+#             logFile.write('\n---------- %s --------\n'% case)
+#             logFile.write(tb)
 
-    
-
-
-logFile = None
 
 def run():
-    global logFile, natconnectOption
-    logFile = open(logFileName, "w")
-    log("log messages to file: %s"% logFileName)
+    # log("log messages to file: %s"% logFileName)
     log('starting unittestNatlinktimer')
-    # trick: if you only want one or two tests to perform, change
-    # the test names to her example def test....
-    # and change the word 'test' into 'tttest'...
-    # do not forget to change back and do all the tests when you are done.
     suite = unittest.makeSuite(UnittestNatlinktimer, 'test')
-##    natconnectOption = 0 # no threading has most chances to pass...
     log('\nstarting tests with threading: %s\n'% natconnectOption)
     result = unittest.TextTestRunner().run(suite)
-    dumpResult(result, logFile=logFile)
-    
-    logFile.close()
+    # log(result)
 
 if __name__ == "__main__":
     baseFolder = getBaseFolder()
-    print("baseFolder: ", baseFolder)
-    # run()
+    log(f"baseFolder: {baseFolder}", refresh=True)
+    log("no log file, just printing on console")
+    run()
