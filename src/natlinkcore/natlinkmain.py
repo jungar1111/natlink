@@ -107,7 +107,8 @@ import os
 import os.path
 import shutil
 import imp              # module reloading
-import re     
+import re
+from pathlib import Path
 from stat import ST_MTIME      # file statistics
 
 from pydebugstring.output import outputDebugString
@@ -162,7 +163,17 @@ ApplicationFrameHostTitles["Rekenmachine"] = "calc"
 ## always set as global variables:
 # baseDirectory = status.getBaseDirectory()    ## MacroSystem folder
 natlinkDirectory = status.getNatlinkDirectory()
-userDirectory = status.getUserDirectory()
+natlinkUserDirectory = status.getNatlinkUserDirectory()
+if status.isTesting():
+    userDirectory = Path(natlinkUserDirectory)/"Test"/"UserDirectory"
+    print(f'TESTing: userDirectory: {userDirectory}')
+    if userDirectory.is_dir():
+        userDirectory = str(userDirectory)
+    else:
+        print('in TESTing, no userDirectory not created "{userDirectory}", set to ""')
+        userDirectory = ""
+else:
+    userDirectory = status.getUserDirectory()
 unimacroDirectory = status.getUnimacroDirectory()
 unimacroGrammarsDirectory = status.getUnimacroGrammarsDirectory()
 vocolaDirectory = status.getVocolaDirectory()

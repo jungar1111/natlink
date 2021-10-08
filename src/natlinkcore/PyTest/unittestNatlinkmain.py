@@ -38,12 +38,13 @@ DNSVersion = status.getDNSVersion()
 
 thisDir = natlinkcore.getThisDir(__file__)
 coreDir = natlinkcore.getNatlinkDirectory()
+userDir = status.getNatlinkUserDirectory()
 # appending to path if necessary:
 # if not os.path.normpath(coreDir) in sys.path:
 #     print('inserting %s to pythonpath...'% coreDir)
 #     sys.path.insert(0, coreDir)
 
-natconnectOption = 0 # or 1 for threading, 0 for not. Seems to make difference
+natconnectOption = 1 # or 1 for threading, 0 for not. Seems to make difference
                      # at least some errors in testNatlinkMain seem to be raised when set to 0
 doSleep = 0.2
 ## getWindowContents has a sleep of 0.2 all the time...
@@ -74,7 +75,12 @@ specialFilenameGlobal = '__jMg_$&^_abc'
 class UnittestNatlinkmain(unittest.TestCase):
     def setUp(self):
         outputDebugString('setting up UnittestNatlinkmain')
-        self.makeEmptyTestDirectory()  ## 
+
+        ## just to be sure, the TEST mode is already checked before running this procedure
+        if not status.isTesting():
+            raise TestError("When testing natlinkmain, please go into TEST mode first")
+        self.makeEmptyTestDirectory()  ##
+    
         if not natlink.isNatSpeakRunning():
             raise TestError('NatSpeak is not currently running')
         self.connect()
@@ -539,13 +545,31 @@ class UnittestNatlinkmain(unittest.TestCase):
         if expected == got:
             return
         self.fail("Fail in doTestSplitApartLines: %s\nexpected: %s\ngot: %s"% (input, expected, got))
-        
-        
 
-    def doTestEqualDicts(self, expected, got, message):
-        if expected == got:
-            return
-        self.fail("Fail in doTestEqualDicts: %s\nexpected: %s\ngot: %s"% (message, expected, got))
+    def toggleMicrophone(self, w=1):
+        # do it slow, the changeCallback does not hit
+        # otherwise
+        wmilli = round(w*1000) if w < 50 else round(w)
+        micState = natlink.getMicState()
+        if micState == 'on':
+            self.log('toggle mic, switching off')
+            natlink.setMicState('off')
+            natlink.waitForSpeech(-wmilli)
+            # self.log('switching on mic')
+            natlink.setMicState('on')
+            natlink.waitForSpeech(-wmilli)
+            self.log('toggle mic, switched on again')
+        else:        
+            self.log('toggle mic, switching on')
+            natlink.setMicState('on')
+            natlink.waitForSpeech(-wmilli)
+            ## in order to react on the toggle of the mic...
+            # natlink.recognitionMimic(['hello', 'world'])
+            # self.log('switching to "%s" mic'% micState)
+            natlink.setMicState(micState)
+            natlink.waitForSpeech(-wmilli)
+            self.log('toggle mic, switched %s again'% micState)
+        natlink.waitForSpeech(-wmilli)
 
     #---------------------------------------------------------------------------
     # This types the keysequence {alt+esc}.  Since this is a sequence trapped
@@ -566,28 +590,35 @@ class UnittestNatlinkmain(unittest.TestCase):
         ## setup test directory:
         self.userDirectory = self.testDirectory/"userDirectory"
         self.userDirectory.mkdir()
-        print(f'userDirectory created: {userDirectory}, is_dir: {userDirectory.is_dir()}')
-        toggleMicrophone = self.toggleMicrophone()
+        self.baseDirectory = self.testDirectory/"baseDirectory"
+        self.baseDirectory.mkdir()
+        
+        print(f'userDirectory created: {self.userDirectory}, is_dir: {self.userDirectory.is_dir()}')
+        self.toggleMicrophone()
         # Basic test of globals.  Make sure that our macro file is not
         # loaded.  Then load the file and make sure it is loaded.
         ## set microphone off:
         natlink.setMicState('off')
-
-    def tttestRest(self):
+        print(f'loadedFiles: {natlinkmain.loadedFiles}')
+        
 
   
         self.log('create jMg1, seventeen', 'seventeen')
         testRecognition = self.doTestRecognition
-        createMacroFile(baseDirectory,'__jMg1.py', 'seventeen')
+        createMacroFile(self.baseDirectory,'__jMg1.py', 'seventeen')
         # direct after create no recognition yet
         testRecognition(['strangeword', 'Natlink', 'commands','seventeen'], 0, log=1)
         
-        toggleMicrophone()
-
+        self.toggleMicrophone()
+        print(f'loadedFiles: {natlinkmain.loadedFiles}')
         # after toggle it should be in:
         testRecognition(['strangeword', 'Natlink', 'commands','seventeen'], 1)
         testRecognition(['strangeword', 'Natlink', 'commands','one'], 0, log=1)
         self.log('create jMg1, one', 'one')
+
+    def tttestRest(self):
+
+
         
         createMacroFile(baseDirectory,'__jMg1.py','one')
         #here the grammar is created, but not should not be recognised by Natlink yet
@@ -934,11 +965,11 @@ def log(t):
 def dumpResult(testResult):
     """dump into 
     """
+    if not logFile:
+        return
     if testResult.wasSuccessful():
         mes = "all succesful"
         logFile.write(mes)
-        return
-    if not logFile:
         return
     logFile.write('\n--------------- errors -----------------\n')
     for case, tb in testResult.errors:
@@ -987,5 +1018,6 @@ def run():
     logFile.close()
 
 if __name__ == "__main__":
+    
     run()
     
