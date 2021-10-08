@@ -165,8 +165,8 @@ class UnittestNatlinkmain(unittest.TestCase):
         # window is not empty we raise an exception to avoid possibily screwing 
         # up the users work.
         i = 0
-        while i < 50:
-            time.sleep(0.2)
+        while i < 10:
+            time.sleep(0.5)
             mod, _title, hndle = natlink.getCurrentModule()
             mod = getBaseName(mod)
             # print 'mod: %s'% mod
@@ -546,30 +546,37 @@ class UnittestNatlinkmain(unittest.TestCase):
             return
         self.fail("Fail in doTestSplitApartLines: %s\nexpected: %s\ngot: %s"% (input, expected, got))
 
-    def toggleMicrophone(self, w=1):
-        # do it slow, the changeCallback does not hit
-        # otherwise
-        wmilli = round(w*1000) if w < 50 else round(w)
-        micState = natlink.getMicState()
-        if micState == 'on':
-            self.log('toggle mic, switching off')
-            natlink.setMicState('off')
-            natlink.waitForSpeech(-wmilli)
-            # self.log('switching on mic')
-            natlink.setMicState('on')
-            natlink.waitForSpeech(-wmilli)
-            self.log('toggle mic, switched on again')
-        else:        
-            self.log('toggle mic, switching on')
-            natlink.setMicState('on')
-            natlink.waitForSpeech(-wmilli)
-            ## in order to react on the toggle of the mic...
-            # natlink.recognitionMimic(['hello', 'world'])
-            # self.log('switching to "%s" mic'% micState)
-            natlink.setMicState(micState)
-            natlink.waitForSpeech(-wmilli)
-            self.log('toggle mic, switched %s again'% micState)
-        natlink.waitForSpeech(-wmilli)
+    # def toggleMicrophone(self, w=1):
+    #     # do it slow, the changeCallback does not hit
+    #     # otherwise
+    #     wmilli = round(w*1000) if w < 50 else round(w)
+    #     micState = natlink.getMicState()
+    #     if micState == 'on':
+    #         self.log('toggle mic, switching off')
+    #         natlink.setMicState('off')
+    #         natlink.waitForSpeech(-wmilli)
+    #         # self.log('switching on mic')
+    #         natlink.setMicState('on')
+    #         natlink.waitForSpeech(-wmilli)
+    #         self.log('toggle mic, switched on again')
+    #     else:        
+    #         self.log('toggle mic, switching on')
+    #         natlink.setMicState('on')
+    #         natlink.waitForSpeech(-wmilli)
+    #         ## in order to react on the toggle of the mic...
+    #         # natlink.recognitionMimic(['hello', 'world'])
+    #         # self.log('switching to "%s" mic'% micState)
+    #         natlink.setMicState(micState)
+    #         natlink.waitForSpeech(-wmilli)
+    #         self.log('toggle mic, switched %s again'% micState)
+    #     natlink.waitForSpeech(-wmilli)
+
+    def fakeToggleMicrohpone(self):
+        """direct call to changeCallback with 'mic' and 'on' (of natlinkmain)
+        
+        used to circumvent the real callback and fiddling with the microphone
+        """
+        natlinkmain.changeCallback('mic', 'on')
 
     #---------------------------------------------------------------------------
     # This types the keysequence {alt+esc}.  Since this is a sequence trapped
@@ -594,22 +601,16 @@ class UnittestNatlinkmain(unittest.TestCase):
         self.baseDirectory.mkdir()
         
         print(f'userDirectory created: {self.userDirectory}, is_dir: {self.userDirectory.is_dir()}')
-        self.toggleMicrophone()
-        # Basic test of globals.  Make sure that our macro file is not
-        # loaded.  Then load the file and make sure it is loaded.
-        ## set microphone off:
-        natlink.setMicState('off')
+        self.fakeToggleMicrohpone()
         print(f'loadedFiles: {natlinkmain.loadedFiles}')
-        
 
-  
         self.log('create jMg1, seventeen', 'seventeen')
         testRecognition = self.doTestRecognition
         createMacroFile(self.baseDirectory,'__jMg1.py', 'seventeen')
         # direct after create no recognition yet
         testRecognition(['strangeword', 'Natlink', 'commands','seventeen'], 0, log=1)
         
-        self.toggleMicrophone()
+        self.fakeToggleMicrohpone()
         print(f'loadedFiles: {natlinkmain.loadedFiles}')
         # after toggle it should be in:
         testRecognition(['strangeword', 'Natlink', 'commands','seventeen'], 1)
