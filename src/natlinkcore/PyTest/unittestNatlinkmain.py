@@ -44,7 +44,7 @@ userDir = status.getNatlinkUserDirectory()
 #     print('inserting %s to pythonpath...'% coreDir)
 #     sys.path.insert(0, coreDir)
 
-natconnectOption = 1 # or 1 for threading, 0 for not. Seems to make difference
+natconnectOption = 0 # or 1 for threading, 0 for not. Seems to make difference
                      # at least some errors in testNatlinkMain seem to be raised when set to 0
 doSleep = 0.2
 ## getWindowContents has a sleep of 0.2 all the time...

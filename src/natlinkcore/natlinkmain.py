@@ -291,6 +291,12 @@ shiftkey = ''  # {shift} or different in some other languages,
 # is the Python module name.  The value is a tuple,
 #  (complete path to the loaded module, timestamp of the python file)
 #
+try: file_timestamp
+except NameError: file_timestamp = {}
+try: global_grammar_files
+except NameError: global_grammar_files = {}
+try: specific_grammar_files
+except NameError: specific_grammar_files = {}
 try: loadedFiles
 except NameError: loadedFiles = {}
 try: wrongFiles
@@ -448,6 +454,24 @@ def safelyCall(modName,funcName):
 #   wordpad.py
 #   wordpad_extra.py
 #
+def find_import_global_files():
+    """find all global files that are candidate for Natlink grammar file
+    
+    simply look for all files with a starting "_" along the diretories specified.
+    
+    Then try the callback into those modules with the function "callback_find_import_global_files"
+    This callback can also create module specific grammar files (Vocola).
+    """
+    #pylint:disable=W0603, R0914, R0912, R0915
+    global loadedFiles
+
+    filesToLoad = {}
+    if userDirectory != '':
+        globFiles = [x for x in os.listdir(userDirectory) if x.endswith('.py') and x.startswith("_")]
+
+        addToFilesToLoad( filesToLoad, modName, userDirectory, moduleHasDot )
+
+
 
 def findAndLoadFiles(curModule=None):
     """find grammar files and load, global or for curModule only
@@ -524,36 +548,36 @@ def findAndLoadFiles(curModule=None):
                     modName = res.group(1)
                     addToFilesToLoad( filesToLoad, modName, vocolaDirectory, moduleHasDot )
 
-        doVocolaFirstModuleName = doVocolaFirst + '.py'
-        if VocolaDirFiles and doVocolaFirstModuleName in VocolaDirFiles:
-            logIfDebugLoad(f'natlinkmain, load {doVocolaFirst}')
-            x = doVocolaFirst
-            loadedFile = loadedFiles.get(x, None)
-            if loadedFile:
-                origPath, origDate = loadedFile
-                loadedFiles[x] = loadFile(x, origPath, origDate)
-            else:
-                loadedFiles[x] = loadFile(x)
-            vocolaModule = sys.modules[doVocolaFirst]
-            vocolaIsLoaded = True
-            if not vocolaModule.VocolaEnabled:
-                # vocola module signals vocola is not enabled:
-                vocolaEnabled = 0
-                del loadedFiles[x]
-                logIfDebugLoad('Vocola is disabled...')
-                vocolaIsLoaded = False
-    
-        if vocolaGrammarsDirectory:
-            vocolaGrammarFiles = [x for x in os.listdir(vocolaGrammarsDirectory) if x.endswith('.py')]
-            nVocolaGrammars = 0
-            for x in vocolaGrammarFiles:
-                res = pat.match(x)
-                if res:
-                    nVocolaGrammars += 1
-                    modName = res.group(1)
-                    addToFilesToLoad( filesToLoad, modName, vocolaGrammarsDirectory, moduleHasDot )
-            if debugLoad:
-                print(f"natlinkmain: {nVocolaGrammars} Vocola Compiled grammars checking to load")
+        # doVocolaFirstModuleName = doVocolaFirst + '.py'
+        # if VocolaDirFiles and doVocolaFirstModuleName in VocolaDirFiles:
+        #     logIfDebugLoad(f'natlinkmain, load {doVocolaFirst}')
+        #     x = doVocolaFirst
+        #     loadedFile = loadedFiles.get(x, None)
+        #     if loadedFile:
+        #         origPath, origDate = loadedFile
+        #         loadedFiles[x] = loadFile(x, origPath, origDate)
+        #     else:
+        #         loadedFiles[x] = loadFile(x)
+        #     vocolaModule = sys.modules[doVocolaFirst]
+        #     vocolaIsLoaded = True
+        #     if not vocolaModule.VocolaEnabled:
+        #         # vocola module signals vocola is not enabled:
+        #         vocolaEnabled = 0
+        #         del loadedFiles[x]
+        #         logIfDebugLoad('Vocola is disabled...')
+        #         vocolaIsLoaded = False
+        # 
+        # if vocolaGrammarsDirectory:
+        #     vocolaGrammarFiles = [x for x in os.listdir(vocolaGrammarsDirectory) if x.endswith('.py')]
+        #     nVocolaGrammars = 0
+        #     for x in vocolaGrammarFiles:
+        #         res = pat.match(x)
+        #         if res:
+        #             nVocolaGrammars += 1
+        #             modName = res.group(1)
+        #             addToFilesToLoad( filesToLoad, modName, vocolaGrammarsDirectory, moduleHasDot )
+        #     if debugLoad:
+        #         print(f"natlinkmain: {nVocolaGrammars} Vocola Compiled grammars checking to load")
 
     # for x in baseDirFiles:
     #     res = pat.match(x)
@@ -828,7 +852,7 @@ def changeCallback(Type,args):
         if debugCallback:
             print('findAndLoadFiles...')
         moduleInfo = natlink.getCurrentModule()
-        findAndLoadFiles()
+        find_import_global_files()
         beginCallback(moduleInfo, checkAll=1)
         loadModSpecific(moduleInfo)
 
