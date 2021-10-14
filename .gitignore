@@ -112,3 +112,4 @@ documentation/_build/
 /ConfigureNatlink/configurenatlink_error.txt
 /src/natlinkcore/PyTest/nsformattestresult.txt
 /src/natlinkcore/error_info_natlink_grammar.txt
+/src/natlinkcore/PyTest/testresult.txt
